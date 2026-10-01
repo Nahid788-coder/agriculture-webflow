@@ -20,7 +20,7 @@ createRoot(document.getElementById('root')).render(
                                 background: '#fdfaf2',
                                 color: '#2a1a13',
                                 border: '1.5px solid #ebd9bf',
-                                fontFamily: 'Inter, sans-serif',
+                                fontFamily: 'Figtree, sans-serif',
                                 fontSize: 14,
                                 fontWeight: 500,
                                 borderRadius: 8,

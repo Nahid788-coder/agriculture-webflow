@@ -3,20 +3,28 @@ import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext.jsx';
 
+// Public read-only account (it cannot change anything on the server).
+const DEMO_EMAIL = 'demo@harvestco.farm';
+const DEMO_PASSWORD = 'demo-view-only';
+
 export default function Login() {
     const [form, setForm] = useState({ email: '', password: '' });
     const { login, loading } = useAuth();
     const navigate = useNavigate();
 
-    const submit = async (e) => {
-        e.preventDefault();
+    const signIn = async (email, password) => {
         try {
-            const u = await login(form.email, form.password);
-            toast.success(`Welcome back, ${u.name}`);
-            navigate(u.role === 'admin' ? '/admin' : '/', { replace: true });
+            const u = await login(email, password);
+            toast.success(u.role === 'demo' ? 'Exploring the admin console (read-only)' : `Welcome back, ${u.name.split(' ')[0]}`);
+            navigate(u.role === 'admin' || u.role === 'demo' ? '/admin' : '/', { replace: true });
         } catch (err) {
             toast.error(err.response?.data?.message || 'Login failed');
         }
+    };
+
+    const submit = (e) => {
+        e.preventDefault();
+        signIn(form.email, form.password);
     };
 
     return (
@@ -39,8 +47,11 @@ export default function Login() {
                     </button>
                 </form>
                 <p className="auth-foot">No account? <Link to="/register">Create one</Link></p>
-                <div style={{ marginTop: 24, padding: 16, border: '1px solid var(--border)', background: 'var(--bg-2)', borderRadius: 12, fontSize: 12, color: 'var(--ink-3)', textAlign: 'center', fontFamily: 'JetBrains Mono, monospace', letterSpacing: 0.5 }}>
-                    Demo Admin: admin@harvestco.farm / admin123
+                <div className="demo-box">
+                    <p><strong>Just looking around?</strong> Open the admin console with live orders and stock. It is read-only and customer details are hidden.</p>
+                    <button type="button" className="btn btn-outline btn-block" disabled={loading} onClick={() => signIn(DEMO_EMAIL, DEMO_PASSWORD)}>
+                        <i className="fas fa-chart-line"></i> Try Admin Demo
+                    </button>
                 </div>
             </div>
         </section>

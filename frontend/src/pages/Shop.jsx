@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useFetch } from '../hooks/useFetch';
+import { useCached } from '../hooks/useCached';
+import { keys, getProducts } from '../api/store';
 import ProductCard from '../components/ProductCard.jsx';
 
 const CATS = [
@@ -20,26 +21,27 @@ export default function Shop() {
     const [sort, setSort] = useState('default');
     const [search, setSearch] = useState('');
 
-    const url = useMemo(() => {
-        const q = new URLSearchParams();
-        if (cat !== 'all') q.set('category', cat);
-        if (sort !== 'default') q.set('sort', sort);
-        const qs = q.toString();
-        return `/products${qs ? '?' + qs : ''}`;
-    }, [cat, sort]);
-
-    const { data: products, loading } = useFetch(url);
+    // The whole catalog is loaded once; filters, search and sorting happen here without new requests.
+    const { data: products, loading } = useCached(keys.products, getProducts);
 
     const filtered = useMemo(() => {
         if (!products) return [];
         const q = search.trim().toLowerCase();
-        if (!q) return products;
-        return products.filter((p) =>
-            p.name.toLowerCase().includes(q) ||
-            p.description?.toLowerCase().includes(q) ||
-            p.tags?.some((t) => t.toLowerCase().includes(q))
+        const list = products.filter((p) =>
+            (cat === 'all' || p.category === cat) &&
+            (!q || p.name.toLowerCase().includes(q) || p.description?.toLowerCase().includes(q) || p.tags?.some((t) => t.toLowerCase().includes(q)))
         );
-    }, [products, search]);
+        const by = {
+            'price-asc': (a, b) => a.price - b.price,
+            'price-desc': (a, b) => b.price - a.price,
+            rating: (a, b) => b.rating - a.rating || b.reviewCount - a.reviewCount,
+            newest: (a, b) => new Date(b.createdAt) - new Date(a.createdAt),
+        }[sort];
+        // In-stock items first, so shoppers see what they can buy.
+        return [...list].sort((a, b) => (a.stock === 0) - (b.stock === 0) || (by ? by(a, b) : 0));
+    }, [products, cat, search, sort]);
+
+    const categoryCount = new Set((products || []).map((p) => p.category)).size;
 
     return (
         <>
@@ -47,7 +49,7 @@ export default function Shop() {
                 <div className="container">
                     <div className="label-mono">All produce · Index</div>
                     <h1 style={{ marginTop: 18 }}>The <em>shop.</em></h1>
-                    <p>Hand-picked, slow-grown, honestly priced. 128 items across 6 categories.</p>
+                    <p>Hand-picked, slow-grown, honestly priced.{products ? ` ${products.length} items across ${categoryCount} categories.` : ''}</p>
                 </div>
             </header>
 
@@ -96,7 +98,7 @@ export default function Shop() {
                             ))}
                         </div>
                     ) : filtered.length === 0 ? (
-                        <p style={{ textAlign: 'center', padding: 80, color: 'var(--ink-3)', fontFamily: 'Fraunces, serif', fontStyle: 'italic', fontSize: 22 }}>Nothing here. Try a different filter.</p>
+                        <p style={{ textAlign: 'center', padding: 80, color: 'var(--ink-3)', fontFamily: 'var(--font-body)', fontStyle: 'italic', fontSize: 22 }}>Nothing here. Try a different filter.</p>
                     ) : (
                         <div className="product-grid">
                             {filtered.map((p, i) => <ProductCard key={p._id} product={p} index={i} />)}

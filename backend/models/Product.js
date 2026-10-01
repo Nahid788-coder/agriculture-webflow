@@ -27,7 +27,7 @@ const productSchema = new mongoose.Schema(
         },
         season: String,
         stock: { type: Number, default: 50, min: 0 },
-        rating: { type: Number, default: 4.7, min: 0, max: 5 },
+        rating: { type: Number, default: 0, min: 0, max: 5 }, // average of customer reviews
         reviewCount: { type: Number, default: 0 },
         organic: { type: Boolean, default: true },
         featured: { type: Boolean, default: false },

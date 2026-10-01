@@ -2,7 +2,9 @@ import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
-import { useFetch, useMutation } from '../hooks/useFetch';
+import api, { errorMessage } from '../api/axios';
+import { keys, getProducts, checkPincode } from '../api/store';
+import { useCached } from '../hooks/useCached';
 import { useAuth } from '../context/AuthContext.jsx';
 
 const BOX_SIZES = [
@@ -18,15 +20,22 @@ const FREQUENCIES = [
     { id: 'monthly', label: 'Monthly' },
 ];
 
+const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+
 const CATS = ['all', 'vegetables', 'fruits', 'pantry', 'dairy', 'grains', 'bakery'];
 
 export default function BoxBuilder() {
-    const { data: products, loading } = useFetch('/products?subscribable=true');
+    // Shared catalog (same request as the shop); only box-eligible, in-stock produce is shown.
+    const { data: catalog, loading } = useCached(keys.products, getProducts);
+    const products = useMemo(() => catalog?.filter((p) => p.subscriptionEligible && p.stock > 0), [catalog]);
+    const [deliveryDay, setDeliveryDay] = useState('saturday');
+    const [pincode, setPincode] = useState(() => localStorage.getItem('hv_pincode') || '');
+    const [address, setAddress] = useState('');
     const [selected, setSelected] = useState({});
     const [size, setSize] = useState(BOX_SIZES[1]);
     const [freq, setFreq] = useState('weekly');
     const [cat, setCat] = useState('all');
-    const { mutate, loading: submitting } = useMutation('/subscriptions');
+    const [submitting, setSubmitting] = useState(false);
     const { user } = useAuth();
     const navigate = useNavigate();
 
@@ -87,35 +96,33 @@ export default function BoxBuilder() {
             navigate('/login');
             return;
         }
+        if (user.role === 'demo') return toast('The demo admin is read-only.');
 
+        if (!/^\d{6}$/.test(pincode)) return toast.error('Enter your delivery pincode');
+        if (!address.trim()) return toast.error('Enter your delivery address');
+
+        setSubmitting(true);
         try {
-            const items = Object.entries(selected).map(([id, q]) => {
-                const p = products.find((x) => x._id === id);
-                return {
-                    product: id,
-                    name: p.name,
-                    image: p.images[0],
-                    price: p.price,
-                    quantity: q,
-                };
-            });
-
-            await mutate({
-                customerName: user.name,
-                customerEmail: user.email,
-                customerPhone: user.phone || '',
-                boxName: `${size.label} ${freq[0].toUpperCase() + freq.slice(1)} Box`,
+            const pin = await checkPincode(pincode); // cached, so checking again costs nothing
+            if (!pin.ok) { toast.error(pin.message); return; }
+            localStorage.setItem('hv_pincode', pincode);
+            // Only ids and quantities are sent; the server prices the box.
+            const { data } = await api.post('/subscriptions', {
+                items: Object.entries(selected).map(([product, quantity]) => ({ product, quantity })),
                 boxSize: size.id,
-                items,
-                boxPrice,
                 frequency: freq,
-                deliveryDay: 'wednesday',
+                deliveryDay,
+                pincode,
+                address,
+                phone: user.phone,
             });
-            toast.success('Subscription created! Check Orders for details.');
+            toast.success(`Subscribed! First box on ${new Date(data.nextDelivery).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short' })}`);
             setSelected({});
             navigate('/orders');
         } catch (err) {
-            toast.error(err.response?.data?.message || 'Failed');
+            toast.error(errorMessage(err, 'Could not create the subscription'));
+        } finally {
+            setSubmitting(false);
         }
     };
 
@@ -201,7 +208,7 @@ export default function BoxBuilder() {
                         {/* RIGHT — Summary */}
                         <div className="builder-summary">
                             <h3>Your <em>Box</em></h3>
-                            <p style={{ fontSize: 14, color: 'var(--ink-3)', fontStyle: 'italic', fontFamily: 'Fraunces, serif', fontWeight: 300 }}>
+                            <p style={{ fontSize: 14, color: 'var(--ink-3)', fontStyle: 'italic', fontFamily: 'var(--font-body)', fontWeight: 300 }}>
                                 {totalCount} of {size.max} items
                             </p>
 
@@ -272,6 +279,17 @@ export default function BoxBuilder() {
                                 </div>
                             </div>
 
+                            <div>
+                                <div className="label-mono" style={{ marginBottom: 12 }}>Delivery</div>
+                                <div className="builder-delivery">
+                                    <select value={deliveryDay} onChange={(e) => setDeliveryDay(e.target.value)} aria-label="Delivery day">
+                                        {DAYS.map((d) => <option key={d} value={d}>Every {d[0].toUpperCase() + d.slice(1)}</option>)}
+                                    </select>
+                                    <input inputMode="numeric" maxLength={6} placeholder="Pincode" aria-label="Pincode" value={pincode} onChange={(e) => setPincode(e.target.value.replace(/\D/g, ''))} />
+                                    <input placeholder="House / street, area" aria-label="Delivery address" value={address} onChange={(e) => setAddress(e.target.value)} maxLength={160} />
+                                </div>
+                            </div>
+
                             <div className="builder-totals">
                                 <div className="builder-total-row"><span>Items subtotal</span><span>₹{subtotal}</span></div>
                                 {savings > 0 && (
@@ -294,8 +312,8 @@ export default function BoxBuilder() {
                             >
                                 {submitting ? 'Creating...' : `Subscribe — ₹${boxPrice}/${freq === 'weekly' ? 'wk' : freq === 'biweekly' ? '2wk' : 'mo'}`}
                             </button>
-                            <p style={{ fontSize: 12, color: 'var(--ink-3)', textAlign: 'center', marginTop: 14, fontFamily: 'Fraunces, serif', fontStyle: 'italic' }}>
-                                Pause or skip anytime. No commitment.
+                            <p style={{ fontSize: 12, color: 'var(--ink-3)', textAlign: 'center', marginTop: 14, fontFamily: 'var(--font-body)', fontStyle: 'italic' }}>
+                                Pause, skip or cancel anytime from My Orders.
                             </p>
                         </div>
                     </div>

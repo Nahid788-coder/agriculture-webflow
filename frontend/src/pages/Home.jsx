@@ -1,25 +1,31 @@
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { useFetch } from '../hooks/useFetch';
+import { useMemo } from 'react';
+import { useCached } from '../hooks/useCached';
+import { keys, getProducts, getRecipes } from '../api/store';
 import ProductCard from '../components/ProductCard.jsx';
 
 const fade = { hidden: { opacity: 0, y: 30 }, show: { opacity: 1, y: 0, transition: { duration: 0.8, ease: [0.22, 1, 0.36, 1] } } };
 const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.1, delayChildren: 0.1 } } };
 
 const CATEGORIES = [
-    { id: 'vegetables', name: 'Vegetables', count: '24 items', img: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=900&q=85&auto=format&fit=crop' },
-    { id: 'fruits', name: 'Fruits', count: '18 items', img: 'https://images.unsplash.com/photo-1610832958506-aa56368176cf?w=900&q=85&auto=format&fit=crop' },
-    { id: 'pantry', name: 'Pantry', count: '32 items', img: 'https://images.unsplash.com/photo-1481931715705-36f5f6ee3a90?w=900&q=85&auto=format&fit=crop' },
-    { id: 'dairy', name: 'Dairy', count: '12 items', img: 'https://images.unsplash.com/photo-1628088062854-d1870b4553da?w=900&q=85&auto=format&fit=crop' },
-    { id: 'grains', name: 'Grains', count: '14 items', img: 'https://images.unsplash.com/photo-1568376794508-ae52c6ab3929?w=900&q=85&auto=format&fit=crop' },
-    { id: 'bakery', name: 'Bakery', count: '8 items', img: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?w=900&q=85&auto=format&fit=crop' },
+    { id: 'vegetables', name: 'Vegetables', img: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=900&q=85&auto=format&fit=crop' },
+    { id: 'fruits', name: 'Fruits', img: 'https://images.unsplash.com/photo-1610832958506-aa56368176cf?w=900&q=85&auto=format&fit=crop' },
+    { id: 'pantry', name: 'Pantry', img: 'https://images.unsplash.com/photo-1481931715705-36f5f6ee3a90?w=900&q=85&auto=format&fit=crop' },
+    { id: 'dairy', name: 'Dairy', img: 'https://images.unsplash.com/photo-1628088062854-d1870b4553da?w=900&q=85&auto=format&fit=crop' },
+    { id: 'grains', name: 'Grains', img: 'https://images.unsplash.com/photo-1568376794508-ae52c6ab3929?w=900&q=85&auto=format&fit=crop' },
+    { id: 'bakery', name: 'Bakery', img: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?w=900&q=85&auto=format&fit=crop' },
 ];
 
 const MARQUEE_ITEMS = ['Slow-grown', 'Hand-picked', 'Single-origin', 'Honestly-priced', 'Earth-first', 'Forever fresh'];
 
 export default function Home() {
-    const { data: featured } = useFetch('/products?featured=true');
-    const { data: recipes } = useFetch('/recipes?limit=3');
+    // One shared request each for products and recipes (also reused by Shop, Box Builder and Recipes).
+    const { data: products } = useCached(keys.products, getProducts);
+    const { data: allRecipes } = useCached(keys.recipes, getRecipes);
+    const featured = useMemo(() => (products || []).filter((p) => p.featured), [products]);
+    const recipes = useMemo(() => (allRecipes || []).slice(0, 3), [allRecipes]);
+    const countIn = (cat) => (products || []).filter((p) => p.category === cat).length;
 
     return (
         <>
@@ -121,7 +127,7 @@ export default function Home() {
                                 <Link to={`/shop?category=${c.id}`} className="cat-card">
                                     <img src={c.img} alt={c.name} loading="lazy" />
                                     <div>
-                                        <div className="cat-card-count">{c.count}</div>
+                                        <div className="cat-card-count">{products ? `${countIn(c.id)} ${countIn(c.id) === 1 ? 'item' : 'items'}` : ' '}</div>
                                         <div className="cat-card-name">{c.name}</div>
                                     </div>
                                 </Link>
@@ -198,7 +204,7 @@ export default function Home() {
                         <h2 className="section-title" style={{ marginTop: 24, color: 'var(--paper)' }}>
                             Build your own<br /><em>weekly box.</em>
                         </h2>
-                        <p style={{ fontFamily: 'Fraunces, serif', fontStyle: 'italic', fontWeight: 300, fontSize: 22, lineHeight: 1.5, color: 'rgba(255,255,255,0.92)', marginTop: 30, marginBottom: 36 }}>
+                        <p style={{ fontFamily: 'var(--font-body)', fontStyle: 'italic', fontWeight: 300, fontSize: 22, lineHeight: 1.5, color: 'rgba(255,255,255,0.92)', marginTop: 30, marginBottom: 36 }}>
                             Pick exactly what you want. Choose your size, frequency, and delivery day. Skip a week or pause anytime — no questions asked.
                         </p>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 40 }}>
@@ -241,7 +247,7 @@ export default function Home() {
                             background: 'var(--honey)', color: 'var(--ink)',
                             width: 110, height: 110, borderRadius: '50%',
                             display: 'grid', placeItems: 'center',
-                            fontFamily: 'Fraunces, serif', fontStyle: 'italic',
+                            fontFamily: 'var(--font-body)', fontStyle: 'italic',
                             fontSize: 14, fontWeight: 500, textAlign: 'center', lineHeight: 1.3,
                             animation: 'spin 16s linear infinite',
                             boxShadow: 'var(--shadow-terra)',
@@ -316,7 +322,7 @@ export default function Home() {
                         <h2 className="section-title" style={{ marginTop: 24 }}>
                             38 <em>farms</em>.<br />One promise.
                         </h2>
-                        <p style={{ fontFamily: 'Fraunces, serif', fontStyle: 'italic', fontWeight: 300, fontSize: 22, lineHeight: 1.5, color: 'var(--ink)', marginTop: 30, marginBottom: 24 }}>
+                        <p style={{ fontFamily: 'var(--font-body)', fontStyle: 'italic', fontWeight: 300, fontSize: 22, lineHeight: 1.5, color: 'var(--ink)', marginTop: 30, marginBottom: 24 }}>
                             We work with thirty-eight family farms across Maharashtra, Karnataka, Kerala, Himachal, and Uttarakhand — each one personally vetted, each one paid above market rate.
                         </p>
                         <p style={{ fontSize: 16, color: 'var(--ink-2)', lineHeight: 1.7, marginBottom: 40 }}>

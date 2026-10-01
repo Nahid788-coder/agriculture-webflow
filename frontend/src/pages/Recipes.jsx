@@ -1,14 +1,15 @@
 import { Link, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { useFetch } from '../hooks/useFetch';
+import { useCached } from '../hooks/useCached';
+import { keys, getRecipes } from '../api/store';
 
 const CATS = ['all', 'breakfast', 'lunch', 'dinner', 'snack', 'dessert', 'drink'];
 
 export default function Recipes() {
     const [params, setParams] = useSearchParams();
     const cat = params.get('category') || 'all';
-    const url = cat === 'all' ? '/recipes' : `/recipes?category=${cat}`;
-    const { data: recipes, loading } = useFetch(url);
+    const { data: all, loading } = useCached(keys.recipes, getRecipes);
+    const recipes = all && (cat === 'all' ? all : all.filter((r) => r.category === cat));
 
     return (
         <>
@@ -16,7 +17,7 @@ export default function Recipes() {
                 <div className="container">
                     <div className="label-mono">Slow kitchen · Recipes</div>
                     <h1 style={{ marginTop: 18 }}>Slow <em>recipes.</em></h1>
-                    <p>Worth-the-effort dishes that honour seasonal produce. Twenty-four recipes in our growing collection.</p>
+                    <p>Worth-the-effort dishes that honour seasonal produce. {all ? `${all.length} recipes in our growing collection.` : ''}</p>
                 </div>
             </header>
 
@@ -48,7 +49,7 @@ export default function Recipes() {
                             ))}
                         </div>
                     ) : recipes?.length === 0 ? (
-                        <p style={{ textAlign: 'center', color: 'var(--ink-3)', padding: 80, fontFamily: 'Fraunces, serif', fontStyle: 'italic', fontSize: 22 }}>No recipes here yet.</p>
+                        <p style={{ textAlign: 'center', color: 'var(--ink-3)', padding: 80, fontFamily: 'var(--font-body)', fontStyle: 'italic', fontSize: 22 }}>No recipes here yet.</p>
                     ) : (
                         <div className="recipe-grid">
                             {recipes?.map((r, i) => (

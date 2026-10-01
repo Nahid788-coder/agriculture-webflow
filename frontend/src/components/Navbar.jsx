@@ -9,6 +9,7 @@ export default function Navbar() {
     const { user, logout } = useAuth();
     const { count, setOpen: setCartOpen } = useCart();
     const navigate = useNavigate();
+    const wishCount = user?.wishlist?.length || 0;
 
     useEffect(() => {
         const onScroll = () => setScrolled(window.scrollY > 30);
@@ -43,13 +44,19 @@ export default function Navbar() {
                             </NavLink>
                         </li>
                     ))}
-                    {user?.role === 'admin' && (
-                        <li><NavLink to="/admin" className="nav-link">Admin</NavLink></li>
+                    {(user?.role === 'admin' || user?.role === 'demo') && (
+                        <li><NavLink to="/admin" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} onClick={() => setMobOpen(false)}>Admin</NavLink></li>
                     )}
-                    {user && <li><NavLink to="/orders" className="nav-link">Orders</NavLink></li>}
+                    {user && user.role !== 'demo' && (
+                        <li><NavLink to="/orders" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} onClick={() => setMobOpen(false)}>My Orders</NavLink></li>
+                    )}
                 </ul>
 
                 <div className="nav-actions">
+                    <Link to="/wishlist" className="icon-btn" aria-label="Wishlist">
+                        <i className="far fa-heart"></i>
+                        <span className={`icon-badge ${wishCount === 0 ? 'hidden' : ''}`}>{wishCount}</span>
+                    </Link>
                     {user ? (
                         <button className="icon-btn" onClick={() => { logout(); navigate('/'); }} aria-label="Logout">
                             <i className="fas fa-right-from-bracket"></i>

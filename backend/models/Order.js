@@ -24,6 +24,8 @@ const orderSchema = new mongoose.Schema(
         },
         items: [orderItemSchema],
         subtotal: { type: Number, required: true },
+        discount: { type: Number, default: 0 },
+        couponCode: String,
         shipping: { type: Number, default: 49 },
         tax: Number,
         total: { type: Number, required: true },
@@ -42,7 +44,12 @@ const orderSchema = new mongoose.Schema(
             enum: ['placed', 'packing', 'out-for-delivery', 'delivered', 'cancelled'],
             default: 'placed',
         },
-        notes: String,
+        deliverySlot: {
+            date: String, // YYYY-MM-DD (India time)
+            window: String,
+            label: String,
+        },
+        notes: { type: String, maxlength: 500 },
     },
     { timestamps: true }
 );

@@ -3,44 +3,35 @@ import Order from '../models/Order.js';
 import Product from '../models/Product.js';
 import Subscription from '../models/Subscription.js';
 import User from '../models/User.js';
-import Recipe from '../models/Recipe.js';
-import { protect, adminOnly } from '../middleware/auth.js';
+import { protect, staffRead } from '../middleware/auth.js';
+import { wrap } from '../lib/http.js';
 
 const router = express.Router();
+export const LOW_STOCK = 10;
 
-router.get('/', protect, adminOnly, async (_req, res) => {
-    try {
-        const now = new Date();
-        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+router.get('/', protect, staffRead, wrap(async (_req, res) => {
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
 
-        const [orders, products, subs, users, recipes] = await Promise.all([
-            Order.find({}).sort('-createdAt').lean(),
-            Product.countDocuments(),
-            Subscription.find({}).lean(),
-            User.countDocuments({ role: 'user' }),
-            Recipe.countDocuments(),
-        ]);
+    const [revenue, orders, monthOrders, products, lowStock, activeSubs, subscriptions, users] = await Promise.all([
+        Order.aggregate([{ $match: { status: 'delivered' } }, { $group: { _id: null, sum: { $sum: '$total' } } }]),
+        Order.countDocuments(),
+        Order.countDocuments({ createdAt: { $gte: monthStart } }),
+        Product.countDocuments(),
+        Product.find({ stock: { $lte: LOW_STOCK } }).select('name stock unit').sort('stock').lean(),
+        Subscription.countDocuments({ status: 'active' }),
+        Subscription.countDocuments(),
+        User.countDocuments({ role: 'user' }),
+    ]);
 
-        const delivered = orders.filter((o) => o.status === 'delivered');
-        const totalRevenue = delivered.reduce((s, o) => s + (o.total || 0), 0);
-        const monthOrders = orders.filter((o) => new Date(o.createdAt) >= monthStart);
-        const activeSubs = subs.filter((s) => s.status === 'active').length;
-
-        res.json({
-            totals: {
-                revenue: Math.round(totalRevenue),
-                orders: orders.length,
-                monthOrders: monthOrders.length,
-                products,
-                subscriptions: subs.length,
-                activeSubs,
-                users,
-                recipes,
-            },
-        });
-    } catch (err) {
-        res.status(500).json({ message: err.message });
-    }
-});
+    res.json({
+        totals: {
+            revenue: Math.round(revenue[0]?.sum || 0), orders, monthOrders, products,
+            activeSubs, subscriptions, users,
+        },
+        lowStock,
+    });
+}));
 
 export default router;

@@ -38,6 +38,7 @@ const subscriptionSchema = new mongoose.Schema(
         },
         startDate: Date,
         nextDelivery: Date,
+        skippedCount: { type: Number, default: 0 },
         status: {
             type: String,
             enum: ['active', 'paused', 'cancelled'],

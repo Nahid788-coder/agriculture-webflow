@@ -1,64 +1,99 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import Product from '../models/Product.js';
-import { protect, adminOnly } from '../middleware/auth.js';
+import Review from '../models/Review.js';
+import Order from '../models/Order.js';
+import { protect, adminOnly, notDemo } from '../middleware/auth.js';
+import { wrap, HttpError, isId } from '../lib/http.js';
+import { shortName } from '../lib/privacy.js';
 
 const router = express.Router();
 
-router.get('/', async (req, res) => {
-    const { category, featured, subscribable, limit, search, sort } = req.query;
-    const filter = {};
-    if (category && category !== 'all') filter.category = category;
-    if (featured === 'true') filter.featured = true;
-    if (subscribable === 'true') filter.subscriptionEligible = true;
-    if (search) {
-        filter.$or = [
-            { name: new RegExp(search, 'i') },
-            { description: new RegExp(search, 'i') },
-            { tags: new RegExp(search, 'i') },
-        ];
-    }
+// The catalog is small, so the app loads it once and filters/sorts in the browser.
+router.get('/', wrap(async (_req, res) => {
+    const products = await Product.find({}).sort('-featured -createdAt').lean();
+    res.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
+    res.json(products);
+}));
 
-    let q = Product.find(filter);
-    switch (sort) {
-        case 'price-asc': q = q.sort('price'); break;
-        case 'price-desc': q = q.sort('-price'); break;
-        case 'rating': q = q.sort('-rating'); break;
-        case 'newest': q = q.sort('-createdAt'); break;
-        default: q = q.sort('-featured -createdAt');
-    }
-    if (limit) q = q.limit(Number(limit));
-    res.json(await q.exec());
-});
+// Product page: product, related items and reviews in one response.
+router.get('/:slug', wrap(async (req, res) => {
+    const product = await Product.findOne({ slug: req.params.slug }).lean();
+    if (!product) throw new HttpError(404, 'Product not found');
+    const [related, reviews] = await Promise.all([
+        Product.find({ category: product.category, _id: { $ne: product._id } }).limit(4).lean(),
+        Review.find({ product: product._id }).sort('-createdAt').limit(30).lean(),
+    ]);
+    res.json({
+        product,
+        related,
+        reviews: reviews.map((r) => ({
+            _id: r._id, user: String(r.user), name: shortName(r.name), rating: r.rating,
+            comment: r.comment, verified: r.verified, createdAt: r.createdAt,
+        })),
+    });
+}));
 
-router.get('/:slug', async (req, res) => {
-    const product = await Product.findOne({ slug: req.params.slug });
-    if (!product) return res.status(404).json({ message: 'Product not found' });
-    const related = await Product.find({
-        category: product.category,
-        _id: { $ne: product._id },
-    }).limit(4);
-    res.json({ product, related });
-});
+async function refreshRating(productId) {
+    // Reviews per product are few, so averaging here is simple and works on any MongoDB.
+    const list = await Review.find({ product: productId }).select('rating').lean();
+    const reviewCount = list.length;
+    const rating = reviewCount ? Math.round((list.reduce((s, r) => s + r.rating, 0) / reviewCount) * 10) / 10 : 0;
+    await Product.updateOne({ _id: productId }, { rating, reviewCount });
+    return { rating, reviewCount };
+}
 
-router.post('/', protect, adminOnly, async (req, res) => {
-    try {
-        const product = await Product.create(req.body);
-        res.status(201).json(product);
-    } catch (err) {
-        res.status(400).json({ message: err.message });
-    }
-});
+// Add or edit your review. "Verified" when you have bought the product.
+router.post('/:id/reviews', protect, notDemo, wrap(async (req, res) => {
+    if (!isId(req.params.id)) throw new HttpError(400, 'Invalid product.');
+    const rating = Number(req.body.rating);
+    const comment = String(req.body.comment || '').trim().slice(0, 600);
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) throw new HttpError(400, 'Please choose 1 to 5 stars.');
+    const product = await Product.findById(req.params.id).select('_id').lean();
+    if (!product) throw new HttpError(404, 'Product not found');
 
-router.put('/:id', protect, adminOnly, async (req, res) => {
-    const product = await Product.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    if (!product) return res.status(404).json({ message: 'Not found' });
+    const verified = Boolean(await Order.exists({ user: req.user._id, 'items.product': product._id, status: { $ne: 'cancelled' } }));
+    const review = await Review.findOneAndUpdate(
+        { product: product._id, user: req.user._id },
+        { rating, comment, verified, name: req.user.name },
+        { upsert: true, new: true, setDefaultsOnInsert: true },
+    ).lean();
+    const summary = await refreshRating(product._id);
+    res.status(201).json({
+        review: { _id: review._id, user: String(review.user), name: shortName(review.name), rating, comment, verified, createdAt: review.createdAt },
+        ...summary,
+    });
+}));
+
+router.delete('/:id/reviews', protect, wrap(async (req, res) => {
+    if (!isId(req.params.id)) throw new HttpError(400, 'Invalid product.');
+    await Review.deleteOne({ product: req.params.id, user: req.user._id });
+    res.json(await refreshRating(new mongoose.Types.ObjectId(req.params.id)));
+}));
+
+/* ---------- Admin ---------- */
+
+const FIELDS = ['name', 'shortDescription', 'description', 'price', 'unit', 'category', 'images', 'farm', 'origin',
+    'certifications', 'season', 'stock', 'organic', 'featured', 'subscriptionEligible', 'tags'];
+const pick = (body) => Object.fromEntries(FIELDS.filter((k) => k in body).map((k) => [k, body[k]]));
+
+router.post('/', protect, adminOnly, wrap(async (req, res) => {
+    res.status(201).json(await Product.create(pick(req.body)));
+}));
+
+router.put('/:id', protect, adminOnly, wrap(async (req, res) => {
+    if (!isId(req.params.id)) throw new HttpError(400, 'Invalid product.');
+    const product = await Product.findByIdAndUpdate(req.params.id, pick(req.body), { new: true, runValidators: true });
+    if (!product) throw new HttpError(404, 'Not found');
     res.json(product);
-});
+}));
 
-router.delete('/:id', protect, adminOnly, async (req, res) => {
+router.delete('/:id', protect, adminOnly, wrap(async (req, res) => {
+    if (!isId(req.params.id)) throw new HttpError(400, 'Invalid product.');
     const product = await Product.findByIdAndDelete(req.params.id);
-    if (!product) return res.status(404).json({ message: 'Not found' });
+    if (!product) throw new HttpError(404, 'Not found');
+    await Review.deleteMany({ product: product._id });
     res.json({ message: 'Deleted' });
-});
+}));
 
 export default router;

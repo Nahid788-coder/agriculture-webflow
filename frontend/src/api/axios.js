@@ -1,7 +1,9 @@
 import axios from 'axios';
 
+// Same origin in production (Vercel serves the site and /api together); proxied in dev.
 const api = axios.create({
-    baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5005/api',
+    baseURL: import.meta.env.VITE_API_URL || '/api',
+    timeout: 20000,
 });
 
 api.interceptors.request.use((config) => {
@@ -20,5 +22,8 @@ api.interceptors.response.use(
         return Promise.reject(err);
     }
 );
+
+export const errorMessage = (err, fallback = 'Something went wrong') =>
+    err?.response?.data?.message || (err?.code === 'ECONNABORTED' ? 'The server took too long. Please try again.' : fallback);
 
 export default api;

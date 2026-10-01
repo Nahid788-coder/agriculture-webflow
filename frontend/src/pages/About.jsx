@@ -29,7 +29,7 @@ export default function About() {
                         viewport={{ once: true, amount: 0.3 }}
                         transition={{ duration: 0.7, delay: 0.1 }}
                     >
-                        <p style={{ fontFamily: 'Fraunces, serif', fontStyle: 'italic', fontWeight: 300, fontSize: 26, lineHeight: 1.4, color: 'var(--ink)', marginBottom: 30 }}>
+                        <p style={{ fontFamily: 'var(--font-body)', fontStyle: 'italic', fontWeight: 300, fontSize: 26, lineHeight: 1.4, color: 'var(--ink)', marginBottom: 30 }}>
                             We started Harvest Co. in a frustrated kitchen. The tomatoes had no flavour. The mangoes were cold. The farmers were paid badly.
                         </p>
                         <p style={{ fontSize: 17, color: 'var(--ink-2)', lineHeight: 1.75, marginBottom: 20 }}>
@@ -83,8 +83,8 @@ export default function About() {
                                 transition={{ duration: 0.5, delay: (i % 4) * 0.08 }}
                                 style={{ padding: 36, borderRight: '1.5px solid var(--border)', borderBottom: '1.5px solid var(--border)' }}
                             >
-                                <div style={{ fontFamily: 'Fraunces, serif', fontSize: 56, fontWeight: 500, letterSpacing: '-0.03em', lineHeight: 0.9, marginBottom: 10 }}>{s.v}</div>
-                                <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--ink-3)' }}>{s.l}</div>
+                                <div style={{ fontFamily: 'var(--font-display)', fontSize: 56, fontWeight: 500, letterSpacing: '-0.03em', lineHeight: 0.9, marginBottom: 10 }}>{s.v}</div>
+                                <div style={{ fontFamily: 'var(--font-body)', fontSize: 11, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--ink-3)' }}>{s.l}</div>
                             </motion.div>
                         ))}
                     </div>
@@ -103,7 +103,7 @@ export default function About() {
                         <h2 className="section-title" style={{ marginTop: 24, color: 'var(--paper)' }}>
                             Mumbai · Pune · Bengaluru.<br /><em>Drop by anytime.</em>
                         </h2>
-                        <p style={{ fontFamily: 'Fraunces, serif', fontStyle: 'italic', fontWeight: 300, fontSize: 22, color: 'rgba(255,255,255,0.85)', maxWidth: 620, margin: '24px auto 40px', lineHeight: 1.5 }}>
+                        <p style={{ fontFamily: 'var(--font-body)', fontStyle: 'italic', fontWeight: 300, fontSize: 22, color: 'rgba(255,255,255,0.85)', maxWidth: 620, margin: '24px auto 40px', lineHeight: 1.5 }}>
                             Our showrooms-cum-cafés are open seven days a week. Come for coffee, leave with a basket.
                         </p>
                     </motion.div>

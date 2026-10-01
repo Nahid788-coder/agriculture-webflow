@@ -20,7 +20,7 @@ const COUNTRIES = [
 ];
 
 const flagUrl = (iso) => `https://flagcdn.com/w40/${iso}.png`;
-const DEFAULT_COUNTRY = COUNTRIES.find((c) => c.iso === 'us');
+const DEFAULT_COUNTRY = COUNTRIES.find((c) => c.iso === 'in'); // an Indian store
 
 export default function PhoneInput({ value = '', onChange, required, name = 'phone' }) {
     const parseInitial = () => {
@@ -77,7 +77,7 @@ export default function PhoneInput({ value = '', onChange, required, name = 'pho
                     color: 'var(--ink)', fontSize: 14, fontWeight: 500, cursor: 'pointer',
                 }}>
                     <img src={flagUrl(country.iso)} alt="" width={22} height={16} />
-                    <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 13 }}>{country.code}</span>
+                    <span style={{ fontFamily: 'var(--font-body)', fontSize: 13 }}>{country.code}</span>
                     <i className="fas fa-chevron-down" style={{ fontSize: 9, opacity: 0.5 }}></i>
                 </button>
                 <input
@@ -91,7 +91,7 @@ export default function PhoneInput({ value = '', onChange, required, name = 'pho
                 />
             </div>
             {!isValid && (
-                <p style={{ fontSize: 11, color: 'var(--terra)', marginTop: 6, fontFamily: 'JetBrains Mono, monospace', letterSpacing: 1, textTransform: 'uppercase' }}>
+                <p style={{ fontSize: 11, color: 'var(--terra)', marginTop: 6, fontFamily: 'var(--font-body)', letterSpacing: 1, textTransform: 'uppercase' }}>
                     Enter exactly {country.len} digits for {country.name}
                 </p>
             )}
@@ -112,7 +112,7 @@ export default function PhoneInput({ value = '', onChange, required, name = 'pho
                         }}>
                             <img src={flagUrl(c.iso)} alt="" width={22} height={16} loading="lazy" />
                             <span>{c.name}</span>
-                            <span style={{ color: 'var(--ink-3)', fontFamily: 'JetBrains Mono, monospace', fontSize: 11 }}>{c.code}</span>
+                            <span style={{ color: 'var(--ink-3)', fontFamily: 'var(--font-body)', fontSize: 11 }}>{c.code}</span>
                         </button>
                     ))}
                 </div>

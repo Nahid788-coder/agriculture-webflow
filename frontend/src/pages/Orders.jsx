@@ -1,47 +1,102 @@
-import { useFetch } from '../hooks/useFetch';
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import toast from 'react-hot-toast';
+import api, { errorMessage } from '../api/axios';
+import { invalidateCatalog } from '../api/store';
+
+const money = (n) => `₹${Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+const date = (d) => new Date(d).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
+const STEPS = ['placed', 'packing', 'out-for-delivery', 'delivered'];
+
+function Timeline({ status }) {
+    if (status === 'cancelled') return null;
+    const at = STEPS.indexOf(status);
+    return (
+        <ol className="timeline">
+            {STEPS.map((s, i) => <li key={s} className={i <= at ? 'done' : ''}><span></span>{s.replace(/-/g, ' ')}</li>)}
+        </ol>
+    );
+}
 
 export default function Orders() {
-    const { data: orders, loading } = useFetch('/orders/my');
-    const { data: subs } = useFetch('/subscriptions/my');
+    const [orders, setOrders] = useState(null);
+    const [subs, setSubs] = useState(null);
+    const [busy, setBusy] = useState(null);
+
+    useEffect(() => {
+        let alive = true;
+        Promise.all([api.get('/orders/my'), api.get('/subscriptions/my')])
+            .then(([o, s]) => { if (alive) { setOrders(o.data); setSubs(s.data); } })
+            .catch((err) => { if (alive) { toast.error(errorMessage(err, 'Could not load your orders')); setOrders([]); setSubs([]); } });
+        return () => { alive = false; };
+    }, []);
+
+    const cancelOrder = async (o) => {
+        if (!window.confirm('Cancel this order?')) return;
+        setBusy(o._id);
+        try {
+            const { data } = await api.post(`/orders/${o._id}/cancel`);
+            setOrders((prev) => prev.map((x) => (x._id === o._id ? data : x)));
+            invalidateCatalog(); // items are back in stock
+            toast.success('Order cancelled');
+        } catch (err) {
+            toast.error(errorMessage(err, 'Could not cancel'));
+        } finally { setBusy(null); }
+    };
+
+    const subAction = async (s, action) => {
+        if (action === 'cancel' && !window.confirm('Cancel this subscription? You can build a new box any time.')) return;
+        setBusy(s._id + action);
+        try {
+            const { data } = await api.post(`/subscriptions/${s._id}/${action}`);
+            setSubs((prev) => prev.map((x) => (x._id === s._id ? data : x)));
+            toast.success({ pause: 'Subscription paused', resume: 'Welcome back! Subscription resumed', skip: `Skipped. Next box: ${date(data.nextDelivery)}`, cancel: 'Subscription cancelled' }[action]);
+        } catch (err) {
+            toast.error(errorMessage(err, 'Could not update the subscription'));
+        } finally { setBusy(null); }
+    };
+
+    const loading = orders === null;
 
     return (
         <section className="section" style={{ paddingTop: 130 }}>
             <div className="container" style={{ maxWidth: 1080 }}>
                 <div className="label-mono">My account</div>
-                <h1 style={{ fontSize: 'clamp(40px, 5vw, 76px)', fontFamily: 'Fraunces, serif', fontWeight: 400, letterSpacing: '-0.03em', marginTop: 18, marginBottom: 12 }}>
-                    Orders & <em>Subscriptions</em>
-                </h1>
-                <p style={{ color: 'var(--ink-2)', marginBottom: 50, fontFamily: 'Fraunces, serif', fontStyle: 'italic', fontSize: 18 }}>
-                    Your past deliveries and active subscriptions in one place.
-                </p>
+                <h1 className="account-title">Orders & <em>subscriptions</em></h1>
 
-                {/* Subscriptions */}
                 {subs?.length > 0 && (
                     <>
-                        <h2 style={{ fontSize: 32, fontFamily: 'Fraunces, serif', fontWeight: 500, marginBottom: 24, letterSpacing: '-0.02em' }}>Active <em style={{ color: 'var(--sage)', fontStyle: 'italic' }}>subscriptions</em></h2>
-                        <div style={{ display: 'grid', gap: 16, marginBottom: 60 }}>
+                        <h2 className="account-h2">Your <em>boxes</em></h2>
+                        <div className="account-list">
                             {subs.map((s) => (
-                                <article key={s._id} style={{ background: 'var(--paper)', border: '1.5px solid var(--border)', borderRadius: 18, padding: 28 }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18, flexWrap: 'wrap', gap: 12 }}>
+                                <article key={s._id} className="account-card">
+                                    <div className="account-card-head">
                                         <div>
-                                            <strong style={{ fontFamily: 'Fraunces, serif', fontSize: 22, fontWeight: 500 }}>{s.boxName}</strong>
-                                            <div style={{ fontSize: 12.5, color: 'var(--ink-3)', marginTop: 4, fontFamily: 'JetBrains Mono, monospace', textTransform: 'uppercase', letterSpacing: 1 }}>
-                                                {s.frequency} · {s.items.length} items · Next: {s.nextDelivery ? new Date(s.nextDelivery).toLocaleDateString() : 'TBD'}
+                                            <strong className="account-card-title">{s.boxName}</strong>
+                                            <div className="account-meta">
+                                                {s.items.length} items · every {s.frequency === 'weekly' ? 'week' : s.frequency === 'biweekly' ? '2 weeks' : 'month'} · {s.deliveryDay}s
                                             </div>
                                         </div>
                                         <span className={`status-pill status-${s.status}`}>{s.status}</span>
                                     </div>
-                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                                        {s.items.slice(0, 8).map((it, i) => (
-                                            <span key={i} style={{ fontSize: 12.5, padding: '6px 12px', background: 'var(--bg-2)', borderRadius: 999 }}>
-                                                {it.name} ×{it.quantity}
-                                            </span>
-                                        ))}
-                                        {s.items.length > 8 && <span style={{ fontSize: 12, color: 'var(--ink-3)', alignSelf: 'center' }}>+{s.items.length - 8} more</span>}
+                                    {s.status === 'active' && s.nextDelivery && (
+                                        <div className="next-box"><i className="fas fa-truck"></i> Next box: <strong>{date(s.nextDelivery)}</strong>{s.skippedCount > 0 && <span> · skipped {s.skippedCount}×</span>}</div>
+                                    )}
+                                    {s.status === 'paused' && <div className="next-box paused"><i className="fas fa-pause"></i> Paused. Resume whenever you like.</div>}
+                                    <div className="chips">
+                                        {s.items.slice(0, 8).map((it, i) => <span key={i}>{it.name} ×{it.quantity}</span>)}
+                                        {s.items.length > 8 && <span className="more">+{s.items.length - 8} more</span>}
                                     </div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 18, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
-                                        <span style={{ fontSize: 13, color: 'var(--ink-3)' }}>per box</span>
-                                        <strong style={{ fontFamily: 'Fraunces, serif', fontSize: 26, fontWeight: 500 }}>₹{s.boxPrice}</strong>
+                                    <div className="account-card-foot">
+                                        <div className="sub-actions">
+                                            {s.status === 'active' && <>
+                                                <button className="btn btn-ghost btn-sm" disabled={!!busy} onClick={() => subAction(s, 'skip')}>Skip next box</button>
+                                                <button className="btn btn-ghost btn-sm" disabled={!!busy} onClick={() => subAction(s, 'pause')}>Pause</button>
+                                            </>}
+                                            {s.status === 'paused' && <button className="btn btn-primary btn-sm" disabled={!!busy} onClick={() => subAction(s, 'resume')}>Resume</button>}
+                                            {s.status !== 'cancelled' && <button className="btn-link danger" disabled={!!busy} onClick={() => subAction(s, 'cancel')}>Cancel</button>}
+                                        </div>
+                                        <div className="price-big">{money(s.boxPrice)}<small>/box</small></div>
                                     </div>
                                 </article>
                             ))}
@@ -49,41 +104,41 @@ export default function Orders() {
                     </>
                 )}
 
-                {/* Orders */}
-                <h2 style={{ fontSize: 32, fontFamily: 'Fraunces, serif', fontWeight: 500, marginBottom: 24, letterSpacing: '-0.02em' }}>Past <em style={{ color: 'var(--sage)', fontStyle: 'italic' }}>orders</em></h2>
-
+                <h2 className="account-h2">Your <em>orders</em></h2>
                 {loading ? (
-                    <p style={{ color: 'var(--ink-3)', textAlign: 'center', padding: 40, fontFamily: 'Fraunces, serif', fontStyle: 'italic' }}>Loading...</p>
-                ) : !orders?.length && !subs?.length ? (
-                    <div style={{ textAlign: 'center', padding: 60, background: 'var(--paper)', borderRadius: 18, border: '1.5px solid var(--border)' }}>
-                        <i className="fas fa-bag-shopping" style={{ fontSize: 56, color: 'var(--dim)', marginBottom: 18 }}></i>
-                        <p style={{ fontSize: 22, fontFamily: 'Fraunces, serif', fontWeight: 500 }}>No orders yet</p>
-                        <p style={{ fontSize: 14, color: 'var(--ink-3)', marginTop: 8, fontStyle: 'italic', fontFamily: 'Fraunces, serif' }}>Place your first order to see it here.</p>
+                    <div className="account-list">{[0, 1].map((i) => <div key={i} className="skel" style={{ height: 180, borderRadius: 18 }}></div>)}</div>
+                ) : orders.length === 0 ? (
+                    <div className="empty-card">
+                        <i className="fas fa-bag-shopping"></i>
+                        <h3>No orders yet</h3>
+                        <p>Your first basket is a few clicks away.</p>
+                        <Link to="/shop" className="btn btn-primary">Shop now</Link>
                     </div>
-                ) : !orders?.length ? (
-                    <p style={{ color: 'var(--ink-3)', fontFamily: 'Fraunces, serif', fontStyle: 'italic' }}>No one-time orders yet.</p>
                 ) : (
-                    <div style={{ display: 'grid', gap: 16 }}>
+                    <div className="account-list">
                         {orders.map((o) => (
-                            <article key={o._id} style={{ background: 'var(--paper)', border: '1.5px solid var(--border)', borderRadius: 18, padding: 28 }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+                            <article key={o._id} className="account-card">
+                                <div className="account-card-head">
                                     <div>
-                                        <strong style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 13, letterSpacing: 1 }}>#{o._id.slice(-8).toUpperCase()}</strong>
-                                        <div style={{ fontSize: 12.5, color: 'var(--ink-3)', marginTop: 4 }}>{new Date(o.createdAt).toLocaleString()}</div>
+                                        <strong className="order-id">#{o._id.slice(-8).toUpperCase()}</strong>
+                                        <div className="account-meta">Placed {new Date(o.createdAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}</div>
                                     </div>
-                                    <span className={`status-pill status-${o.status}`}>{o.status}</span>
+                                    <span className={`status-pill status-${o.status}`}>{o.status.replace(/-/g, ' ')}</span>
                                 </div>
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
-                                    {o.items.slice(0, 6).map((it, i) => (
-                                        <span key={i} style={{ fontSize: 12.5, padding: '6px 12px', background: 'var(--bg-2)', borderRadius: 999 }}>
-                                            {it.name} ×{it.quantity}
-                                        </span>
-                                    ))}
-                                    {o.items.length > 6 && <span style={{ fontSize: 12, color: 'var(--ink-3)', alignSelf: 'center' }}>+{o.items.length - 6} more</span>}
+                                <Timeline status={o.status} />
+                                {o.deliverySlot?.label && o.status !== 'cancelled' && (
+                                    <div className="next-box"><i className="fas fa-calendar-check"></i> Delivery: <strong>{o.deliverySlot.label}</strong></div>
+                                )}
+                                <div className="chips">
+                                    {o.items.slice(0, 6).map((it, i) => <span key={i}>{it.name} ×{it.quantity}</span>)}
+                                    {o.items.length > 6 && <span className="more">+{o.items.length - 6} more</span>}
                                 </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 16, borderTop: '1px solid var(--border)' }}>
-                                    <span style={{ fontSize: 13, color: 'var(--ink-3)', textTransform: 'uppercase' }}>{o.paymentMethod}</span>
-                                    <strong style={{ fontFamily: 'Fraunces, serif', fontSize: 26, fontWeight: 500 }}>₹{o.total}</strong>
+                                <div className="account-card-foot">
+                                    <div className="account-meta">
+                                        Pay on delivery{o.discount > 0 && <> · {o.couponCode} saved {money(o.discount)}</>}
+                                        {o.status === 'placed' && <button className="btn-link danger" disabled={busy === o._id} onClick={() => cancelOrder(o)}>Cancel order</button>}
+                                    </div>
+                                    <div className="price-big">{money(o.total)}</div>
                                 </div>
                             </article>
                         ))}

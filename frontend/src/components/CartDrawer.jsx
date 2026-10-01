@@ -1,9 +1,20 @@
-import { useNavigate } from 'react-router-dom';
+import { useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext.jsx';
 
 export default function CartDrawer() {
     const { items, removeItem, updateQty, subtotal, count, open, setOpen } = useCart();
     const navigate = useNavigate();
+    const { pathname } = useLocation();
+
+    // Close when the page changes or Escape is pressed, so the drawer never blocks the page.
+    useEffect(() => { setOpen(false); }, [pathname, setOpen]);
+    useEffect(() => {
+        if (!open) return undefined;
+        const onKey = (e) => e.key === 'Escape' && setOpen(false);
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [open, setOpen]);
 
     const checkout = () => {
         setOpen(false);
@@ -18,7 +29,7 @@ export default function CartDrawer() {
             <aside className={`cart-drawer ${open ? 'open' : ''}`}>
                 <div className="cart-head">
                     <h3>Your <em>Bag</em> <span style={{ color: 'var(--ink-3)', fontWeight: 400 }}>({count})</span></h3>
-                    <button className="cart-close" onClick={() => setOpen(false)}><i className="fas fa-xmark"></i></button>
+                    <button className="cart-close" onClick={() => setOpen(false)} aria-label="Close bag"><i className="fas fa-xmark"></i></button>
                 </div>
 
                 <div className="cart-body">
@@ -53,7 +64,8 @@ export default function CartDrawer() {
                     <div className="cart-foot">
                         <div className="cart-summary"><span>Subtotal</span><span>₹{subtotal}</span></div>
                         <div className="cart-summary"><span>Shipping</span><span>{shipping === 0 ? 'Free' : `₹${shipping}`}</span></div>
-                        <div className="cart-summary total"><span>Total</span><strong>₹{subtotal + shipping}</strong></div>
+                        <div className="cart-summary total"><span>Estimated total</span><strong>₹{subtotal + shipping}</strong></div>
+                        <p style={{ fontSize: 12, color: 'var(--ink-3)', margin: '-4px 0 14px' }}>{shipping > 0 ? `Add ₹${999 - subtotal} more for free delivery. ` : ''}GST and coupons are applied at checkout.</p>
                         <button className="btn btn-primary btn-block" onClick={checkout}>Checkout →</button>
                     </div>
                 )}
