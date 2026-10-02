@@ -12,7 +12,8 @@ const router = express.Router();
 // The catalog is small, so the app loads it once and filters/sorts in the browser.
 router.get('/', wrap(async (_req, res) => {
     const products = await Product.find({}).sort('-featured -createdAt').lean();
-    res.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
+    // Not cached on the CDN: stock changes with every order and must show up immediately.
+    res.set('Cache-Control', 'no-store');
     res.json(products);
 }));
 
