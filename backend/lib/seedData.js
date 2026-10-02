@@ -2,6 +2,7 @@ import Product from '../models/Product.js';
 import Recipe from '../models/Recipe.js';
 import User from '../models/User.js';
 import Coupon from '../models/Coupon.js';
+import Review from '../models/Review.js';
 
 // Public, read-only account shown on the login page so visitors can explore the admin console.
 export const DEMO = { email: 'demo@harvestco.farm', password: 'demo-view-only' };
@@ -53,12 +54,68 @@ export async function ensureSeed({ resetCatalog = false } = {}) {
     if (!recipeCount) for (const r of recipes) await Recipe.create(r);
     if (!couponCount) await Coupon.insertMany(coupons);
 
-    const { ADMIN_EMAIL, ADMIN_PASSWORD } = process.env;
-    if (ADMIN_EMAIL && ADMIN_PASSWORD && !(await User.exists({ email: ADMIN_EMAIL.toLowerCase() }))) {
-        await User.create({ name: 'Admin', email: ADMIN_EMAIL, password: ADMIN_PASSWORD, role: 'admin' });
-        console.log(`Admin created: ${ADMIN_EMAIL}`);
-    }
+    await syncAdmin();
+    await syncRatings();
+
     if (!(await User.exists({ email: DEMO.email }))) {
         await User.create({ name: 'Demo Admin', email: DEMO.email, password: DEMO.password, role: 'demo' });
+    }
+}
+
+/**
+ * The admin account is defined only by ADMIN_EMAIL / ADMIN_PASSWORD (Vercel env vars):
+ * its password always matches the env value, and any other admin account (for example the
+ * old public admin@harvestco.farm / admin123 from the first version) loses admin rights.
+ */
+const LEGACY_ADMIN = 'admin@harvestco.farm';
+
+async function syncAdmin() {
+    const email = process.env.ADMIN_EMAIL?.trim().toLowerCase();
+    const password = process.env.ADMIN_PASSWORD;
+    // The first version printed this login publicly; it must never be an admin unless set in the env.
+    if (email !== LEGACY_ADMIN) await User.updateOne({ email: LEGACY_ADMIN, role: 'admin' }, { role: 'user' });
+    if (!email || !password) return;
+
+    const demoted = await User.updateMany({ role: 'admin', email: { $ne: email } }, { role: 'user' });
+    if (demoted.modifiedCount) console.log(`Removed admin rights from ${demoted.modifiedCount} old account(s)`);
+
+    const admin = await User.findOne({ email }).select('+password');
+    if (!admin) {
+        await User.create({ name: 'Admin', email, password, role: 'admin' });
+        console.log(`Admin created: ${email}`);
+    } else if (admin.role !== 'admin' || !(await admin.matchPassword(password))) {
+        admin.role = 'admin';
+        admin.password = password; // hashed by the model's save hook
+        await admin.save();
+        console.log(`Admin updated: ${email}`);
+    }
+}
+
+/** Ratings come only from real reviews; clears any sample numbers left in an older database. */
+async function syncRatings() {
+    const [products, reviews] = await Promise.all([
+        Product.find({}).select('rating reviewCount').lean(),
+        Review.find({}).select('product rating').lean(),
+    ]);
+    const byProduct = new Map();
+    for (const r of reviews) {
+        const k = String(r.product);
+        const e = byProduct.get(k) || { sum: 0, n: 0 };
+        e.sum += r.rating;
+        e.n += 1;
+        byProduct.set(k, e);
+    }
+    const fixes = [];
+    for (const p of products) {
+        const e = byProduct.get(String(p._id));
+        const reviewCount = e?.n || 0;
+        const rating = e ? Math.round((e.sum / e.n) * 10) / 10 : 0;
+        if (p.reviewCount !== reviewCount || p.rating !== rating) {
+            fixes.push(Product.updateOne({ _id: p._id }, { rating, reviewCount }));
+        }
+    }
+    if (fixes.length) {
+        await Promise.all(fixes);
+        console.log(`Ratings corrected on ${fixes.length} product(s)`);
     }
 }
