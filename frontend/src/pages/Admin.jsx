@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 import api, { errorMessage } from '../api/axios';
 import { invalidateCatalog, invalidate, keys } from '../api/store';
 import { useAuth } from '../context/AuthContext.jsx';
+import ProductForm from '../components/ProductForm.jsx';
 
 const ORDER_STATUSES = ['placed', 'packing', 'out-for-delivery', 'delivered', 'cancelled'];
 const SUB_STATUSES = ['active', 'paused', 'cancelled'];
@@ -50,6 +51,7 @@ export default function Admin() {
     const [subs, setSubs] = useState([]);
     const [coupons, setCoupons] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [editing, setEditing] = useState(null); // null = closed, {} = new, product = edit
 
     // Everything the console needs, loaded once in parallel. Edits update this state directly.
     useEffect(() => {
@@ -98,6 +100,22 @@ export default function Admin() {
             invalidateCatalog();
             toast.success(`${p.name}: stock ${stock}`);
         } catch (err) { toast.error(errorMessage(err, 'Failed')); }
+    };
+
+    const onProductSaved = (p, wasEdit) => {
+        setProducts((prev) => (wasEdit ? prev.map((x) => (x._id === p._id ? p : x)) : [p, ...prev]));
+        setEditing(null);
+        invalidateCatalog();
+    };
+
+    const deleteProduct = async (p) => {
+        if (!window.confirm(`Delete "${p.name}"? It will disappear from the shop. Past orders keep their details.`)) return;
+        try {
+            await api.delete(`/products/${p._id}`);
+            setProducts((prev) => prev.filter((x) => x._id !== p._id));
+            invalidateCatalog();
+            toast.success(`${p.name} deleted`);
+        } catch (err) { toast.error(errorMessage(err, 'Could not delete')); }
     };
 
     const toggleCoupon = async (c) => {
@@ -222,9 +240,16 @@ export default function Admin() {
                 )}
 
                 {!loading && tab === 'products' && (
+                    <>
+                    {!readOnly && (
+                        <div className="admin-toolbar">
+                            <p className="muted">Edit stock inline, or open a product to change anything else.</p>
+                            <button className="btn btn-primary btn-sm" onClick={() => setEditing({})}><i className="fas fa-plus"></i> Add product</button>
+                        </div>
+                    )}
                     <div className="table-wrap">
                         <table className="admin-table">
-                            <thead><tr><th></th><th>Name</th><th>Category</th><th>Price</th><th>Rating</th><th>Stock</th></tr></thead>
+                            <thead><tr><th></th><th>Name</th><th>Category</th><th>Price</th><th>Rating</th><th>Stock</th>{!readOnly && <th></th>}</tr></thead>
                             <tbody>
                                 {products.map((p) => (
                                     <tr key={p._id}>
@@ -242,11 +267,22 @@ export default function Admin() {
                                                 aria-label={`Stock for ${p.name}`}
                                             />
                                         </td>
+                                        {!readOnly && (
+                                            <td className="row-actions">
+                                                <button className="icon-act" onClick={() => setEditing(p)} aria-label={`Edit ${p.name}`}><i className="fas fa-pen"></i></button>
+                                                <button className="icon-act danger" onClick={() => deleteProduct(p)} aria-label={`Delete ${p.name}`}><i className="fas fa-trash"></i></button>
+                                            </td>
+                                        )}
                                     </tr>
                                 ))}
                             </tbody>
                         </table>
                     </div>
+                    </>
+                )}
+
+                {editing && (
+                    <ProductForm product={editing._id ? editing : null} onClose={() => setEditing(null)} onSaved={onProductSaved} />
                 )}
 
                 {!loading && tab === 'coupons' && (

@@ -78,13 +78,41 @@ const FIELDS = ['name', 'shortDescription', 'description', 'price', 'unit', 'cat
     'certifications', 'season', 'stock', 'organic', 'featured', 'subscriptionEligible', 'tags'];
 const pick = (body) => Object.fromEntries(FIELDS.filter((k) => k in body).map((k) => [k, body[k]]));
 
+/** Light checks with clear messages, so the admin form can show exactly what is wrong. */
+function cleanProduct(body, { partial = false } = {}) {
+    const d = pick(body);
+    const need = (k, label) => { if (!partial && !String(d[k] ?? '').trim()) throw new HttpError(400, `${label} is required.`); };
+    need('name', 'Name'); need('shortDescription', 'Short description'); need('description', 'Description'); need('category', 'Category');
+    if ('price' in d || !partial) {
+        d.price = Number(d.price);
+        if (!Number.isFinite(d.price) || d.price <= 0) throw new HttpError(400, 'Price must be more than 0.');
+    }
+    if ('stock' in d) {
+        d.stock = Number(d.stock);
+        if (!Number.isInteger(d.stock) || d.stock < 0) throw new HttpError(400, 'Stock must be a whole number, 0 or more.');
+    }
+    if ('images' in d || !partial) {
+        const list = (Array.isArray(d.images) ? d.images : String(d.images || '').split(/[\n,]+/)).map((u) => String(u).trim()).filter(Boolean);
+        if (!list.length) throw new HttpError(400, 'Add at least one image link.');
+        if (list.some((u) => !/^https:\/\/\S+$/i.test(u))) throw new HttpError(400, 'Image links must start with https://');
+        d.images = list.slice(0, 6);
+    }
+    for (const k of ['certifications', 'tags']) {
+        if (k in d && !Array.isArray(d[k])) d[k] = String(d[k] || '').split(',').map((x) => x.trim()).filter(Boolean);
+    }
+    for (const k of ['name', 'shortDescription', 'description', 'unit', 'farm', 'origin', 'season']) {
+        if (k in d) d[k] = String(d[k]).trim().slice(0, k === 'description' ? 1500 : 160);
+    }
+    return d;
+}
+
 router.post('/', protect, adminOnly, wrap(async (req, res) => {
-    res.status(201).json(await Product.create(pick(req.body)));
+    res.status(201).json(await Product.create(cleanProduct(req.body)));
 }));
 
 router.put('/:id', protect, adminOnly, wrap(async (req, res) => {
     if (!isId(req.params.id)) throw new HttpError(400, 'Invalid product.');
-    const product = await Product.findByIdAndUpdate(req.params.id, pick(req.body), { new: true, runValidators: true });
+    const product = await Product.findByIdAndUpdate(req.params.id, cleanProduct(req.body, { partial: true }), { new: true, runValidators: true });
     if (!product) throw new HttpError(404, 'Not found');
     res.json(product);
 }));

@@ -44,7 +44,7 @@ export default function ProductCard({ product, index = 0 }) {
                 </div>
                 <div className="product-card-cat">{product.category}</div>
                 <h3>{product.name}</h3>
-                <div className="product-card-meta">{product.farm} · {product.origin}</div>
+                <div className="product-card-meta">{[product.farm, product.origin].filter(Boolean).join(' · ')}</div>
                 <div className="product-card-foot">
                     <div className="product-card-price">₹{product.price}<small>/{product.unit}</small></div>
                     {product.reviewCount > 0 && (

@@ -70,9 +70,11 @@ app.use('/api', (_req, res) => res.status(404).json({ message: 'Not found' }));
 
 // eslint-disable-next-line no-unused-vars
 app.use((err, _req, res, _next) => {
+    if (err.code === 11000) return res.status(400).json({ message: 'Something with that name or code already exists.' });
     const status = err.status || (err.name === 'ValidationError' || err.name === 'CastError' ? 400 : 500);
     if (status >= 500) console.error(err);
-    res.status(status).json({ message: status >= 500 ? 'Something went wrong. Please try again.' : err.message });
+    const message = err.name === 'ValidationError' ? Object.values(err.errors).map((e) => e.message).join(' ') : err.message;
+    res.status(status).json({ message: status >= 500 ? 'Something went wrong. Please try again.' : message });
 });
 
 export default app;
